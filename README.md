@@ -1,11 +1,39 @@
-# RAG GitHub Analysis API
+# AI Submission Analysis API
 
-Сервис анализирует:
+AI-powered система для автоматической оценки текстовых сабмитов и GitHub-репозиториев по пользовательским критериям.
 
-- текстовые документы по переданному `textContent`
-- GitHub-репозитории по переданному `repo_url`
+Поддерживаются два сценария:
 
-Оба endpoint'а возвращают одинаковый JSON-формат: список результатов по критериям.
+- анализ текста по полю `textContent`
+- анализ GitHub-репозитория по полю `repo_url`
+
+Оба endpoint'а возвращают единый JSON-формат с результатами оценки по критериям.
+
+## Возможности
+
+- автоматический разбор сабмитов по заданным критериям
+- гибридный retrieval: семантический поиск + BM25
+- поиск подтверждающих фрагментов в коде и тексте
+- формирование краткого ответа и итоговой оценки
+- выдача evidence с цитатами и ссылками на источники
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[Repository / Text Submission]
+    --> B[Chunking]
+
+    B --> C[Vector Search]
+    B --> D[BM25 Search]
+
+    C --> E[Hybrid Retrieval]
+    D --> E
+
+    E --> F[Context Aggregation]
+    F --> G[LLM Evaluation]
+    G --> H[Structured Response + Evidence]
+```
 
 ## Установка
 
@@ -45,16 +73,17 @@ uvicorn src.api:app --host 0.0.0.0 --port 9000
 PORT=9000 python3 -m src.api
 ```
 
-Дополнительно можно задать:
+## Конфигурация
 
-```bash
-HOST=0.0.0.0
-RELOAD=true
-MODEL_NAME=Qwen/Qwen2.5-3B-Instruct
-LOAD_IN_4BIT=true
-MAX_NEW_TOKENS=512
-TEMPERATURE=0.1
-PERSIST_DIRECTORY=.rag_cache/chroma
+Пример конфигурации LLM API:
+
+```python
+config = RepoAnalysisConfig(
+    api_base_url="https://api.mistral.ai/v1",
+    api_key=os.getenv("API_KEY"),
+    api_model_name="open-mistral-7b",
+    max_new_tokens=1024,
+)
 ```
 
 ## Endpoint'ы
@@ -68,11 +97,11 @@ PERSIST_DIRECTORY=.rag_cache/chroma
 ```json
 {
   "title": "Технические аспекты",
-  "textContent": "текст из документа",
+  "textContent": "text",
   "criteria": [
-    {"id": "101", "description": "Какая модель и подход был использован"},
-    {"id": "102", "description": "Оцените обоснованность решения"},
-    {"id": "103", "description": "Есть ли метрики эффективности"},
+    {"id": "101", "description": "Какая модель и подход были использованы"},
+    {"id": "102", "description": "Есть ли README в репозитории"},
+    {"id": "103", "description": "Какие метрики качества указаны"},
     {"id": "104", "description": "Насколько подробно описан технический стек"}
   ]
 }
@@ -85,11 +114,11 @@ curl -X POST http://localhost:8000/analyze/text \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Технические аспекты",
-    "textContent": "текст из документа",
+    "textContent": "text",
     "criteria": [
-      {"id": "101", "description": "Какая модель и подход был использован"},
-      {"id": "102", "description": "Оцените обоснованность решения"},
-      {"id": "103", "description": "Есть ли метрики эффективности"},
+      {"id": "101", "description": "Какая модель и подход были использованы"},
+      {"id": "102", "description": "Есть ли README в репозитории"},
+      {"id": "103", "description": "Какие метрики качества указаны"},
       {"id": "104", "description": "Насколько подробно описан технический стек"}
     ]
   }'
@@ -105,9 +134,9 @@ curl -X POST http://localhost:8000/analyze/text \
 {
   "repo_url": "https://github.com/owner/repo",
   "criteria": [
-    {"id": "101", "description": "Какая модель и подход был использован"},
-    {"id": "102", "description": "Оцените обоснованность решения"},
-    {"id": "103", "description": "Есть ли метрики эффективности"},
+    {"id": "101", "description": "Какая модель и подход были использованы"},
+    {"id": "102", "description": "Есть ли README в репозитории"},
+    {"id": "103", "description": "Какие метрики качества указаны"},
     {"id": "104", "description": "Насколько подробно описан технический стек"}
   ]
 }
@@ -121,9 +150,9 @@ curl -X POST http://localhost:8000/analyze/repository \
   -d '{
     "repo_url": "https://github.com/owner/repo",
     "criteria": [
-      {"id": "101", "description": "Какая модель и подход был использован"},
-      {"id": "102", "description": "Оцените обоснованность решения"},
-      {"id": "103", "description": "Есть ли метрики эффективности"},
+      {"id": "101", "description": "Какая модель и подход были использованы"},
+      {"id": "102", "description": "Есть ли README в репозитории"},
+      {"id": "103", "description": "Какие метрики качества указаны"},
       {"id": "104", "description": "Насколько подробно описан технический стек"}
     ]
   }'
@@ -152,3 +181,62 @@ curl -X POST http://localhost:8000/analyze/repository \
   }
 ]
 ```
+
+## Пример вывода
+```json
+{
+  "criterion_id": "101",
+  "criterion_description": "Какая модель и подход были использованы",
+  "score": 7,
+  "confidence": 0.95,
+  "answer": "Основной подход включает использование LightGBM как финальной модели и LogisticRegression как базовой модели в процессе обучения. Также применяются SHAP-анализ для интерпретируемости, полиномиальные взаимодействия через PolynomialFeatures, логарифмические трансформации, классовая балансировка, байесовская импутация пропусков и агрегация признаков.",
+  "evidence": [
+    {
+      "path": "README.md",
+      "chunk_index": 0,
+      "quote": "LightGBM | SHAP summary/dependence/force plots",
+      "why": "README описывает использование LightGBM и SHAP для интерпретации модели"
+    },
+    {
+      "path": "Notebooks/Training.ipynb",
+      "chunk_index": 4,
+      "quote": "В качестве базовой модели выберем LogisticRegression",
+      "why": "Notebook подтверждает использование LogisticRegression как baseline-модели"
+    },
+    {
+      "path": "models",
+      "chunk_index": 0,
+      "quote": "best_lgbm.joblib",
+      "why": "Артефакт модели указывает на использование LightGBM"
+    },
+    {
+      "path": "src/features.py",
+      "chunk_index": 0,
+      "quote": "PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)",
+      "why": "Подтверждает использование feature interactions"
+    },
+    {
+      "path": "src/preprocessing.py",
+      "chunk_index": 0,
+      "quote": "MonthlyIncomeImputer('../models/bayesian_mi.joblib')",
+      "why": "Используется байесовская импутация пропусков"
+    },
+    {
+      "path": "src/preprocessing.py",
+      "chunk_index": 0,
+      "quote": "LogTransformer(cols=['DebtRatio', 'PastDueAggregated'])",
+      "why": "Подтверждает использование логарифмических трансформаций"
+    }
+  ]
+}
+```
+
+## Используемые технологии
+
+* Python
+* FastAPI
+* LangChain / LangGraph
+* ChromaDB
+* BM25
+* Transformers
+* PyTorch
