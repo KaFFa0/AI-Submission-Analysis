@@ -20,7 +20,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-from utils import (
+from src.utils import (
     infer_kind,
     is_ignored_path,
     _read_binary_safe_text,
